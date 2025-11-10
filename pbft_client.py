@@ -17,7 +17,7 @@ def banner():
         print("× Cannot connect to primary; please make sure the primary is running")
     print("="*60)
     print("\nCommands:")
-    print("  send <k=v,...>  - send a request to the primary")
+    print("  send <k=v,...>  - send a request to the current leader")
     print("  list            - show number of replies received (from all nodes)")
     print("  quit            - exit")
     print("\nclient> ", end="", flush=True)
@@ -58,7 +58,6 @@ def repl():
             print("Unknown command")
 
 if __name__ == "__main__":
-    # Accept either `python pbft_client.py 7000` or default to 7000
     if len(sys.argv) >= 2:
         try:
             client_port = int(sys.argv[1])
