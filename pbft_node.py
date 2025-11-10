@@ -14,6 +14,8 @@ current_primary = "P0"
 primary_host, primary_port = DEFAULT_PRIMARY_HOST, DEFAULT_PRIMARY_PORT
 view = 0
 
+byzantine_id = None  # will be set via MEMBERS/NEW_VIEW; this node is Byzantine iff id_ == byzantine_id
+
 state_data = {}
 tx_log = {}
 current_tx = None
@@ -24,11 +26,9 @@ commit_votes = {}
 pending_prepare_tx = None
 clients = set()
 
-# view change
 vc_votes = {}
 vc_done_for_view = set()
 
-# checkpoint (collector side when this node is leader)
 checkpoint_reports = {}
 checkpoint_expected = {}
 last_final_checkpoint_path = None
@@ -64,25 +64,27 @@ def banner():
         print("× Cannot register to P0; please make sure P0 is running")
     print("="*60)
     print("\nCommands:")
-    print("  status               - show node/view/ledger/tx history")
-    print("  data                 - show committed app data")
-    print("  prepare yes/no       - (manual) broadcast PREPARE vote for the pending tx")
-    print("  ack commit/abort     - (manual) broadcast COMMIT_VOTE")
+    print("  status                         - show node/view/leader/members/tx")
+    print("  data                           - show committed app data")
+    print("  tx                             - start a new tx (if I am leader)")
+    print("  progress                       - evaluate votes/acks and possibly finalize")
+    print("  prepare yes|no                 - broadcast PREPARE to all peers")
+    print("  prepare to <PID> yes|no        - (Byzantine only) send PREPARE to a single peer")
+    print("  ack commit|abort               - broadcast COMMIT_VOTE to all peers")
+    print("  ack to <PID> commit|abort      - (Byzantine only) send COMMIT_VOTE to a single peer")
     print("  crash / recover")
-    print("  view change          - broadcast VIEW_CHANGE (next primary issues NEW_VIEW on 2f+1)")
-    print("  checkpoint           - print local snapshot; if I am leader, coordinate distributed checkpoint")
-    print("  # when I become primary: tx / progress")
+    print("  view change                    - request view change")
+    print("  checkpoint                     - if I am leader, coordinate distributed checkpoint")
     print("  quit")
     print(f"\n{id_}> ", end="", flush=True)
 
 def announce_primary_capabilities():
-    print(f"\n✓ current view={view}, primary={current_primary}")
+    print(f"\n✓ current view={view}, primary={current_primary}, Byzantine={byzantine_id}")
     if current_primary == id_:
         print("→ I am the leader now: commands available: tx / progress / checkpoint")
         reexec_unfinished()
 
 def reexec_unfinished():
-    # restart any tx that is not COMMITTED (including ABORTED/STARTED), rebroadcast PRE_PREPARE
     pending = [tid for tid,info in tx_log.items() if info.get("status")!="COMMITTED"]
     if not pending:
         return
@@ -92,7 +94,7 @@ def reexec_unfinished():
         return
     print(f"→ Found unfinished tx {tid} (status={info.get('status')}), rebroadcasting PRE-PREPARE as the new leader")
     for pid,(h,p) in members.items():
-        if pid == id_:
+        if pid == id_: 
             continue
         json_send(h,p,{"type":"PRE_PREPARE","txid":tid,"data":info["data"],"from":current_primary,
                        "primary_host":primary_host,"primary_port":primary_port})
@@ -110,8 +112,6 @@ def parse_kv(s):
 
 def start_tx(data_str):
     global current_tx
-    if current_primary != id_:
-        print("× I am not the leader; cannot start a transaction"); return
     if len(members) <= 1:
         print("× No participants yet; cannot start a transaction"); return
     txid = short_uuid()
@@ -132,37 +132,38 @@ def start_tx(data_str):
                        "primary_host":primary_host,"primary_port":primary_port})
     print("\n[Phase 2/4] Prepare (manual)")
     print("-"*60)
-    print("Hint: on each replica console, run 'prepare yes' or 'prepare no'.")
+    print("Hint: on each replica console, run 'prepare yes' or 'prepare no'. Byzantine can target specific nodes.")
 
 def evaluate_prepare(txid):
     votes = prepare_votes.get(txid, {})
     yes = sum(1 for v in votes.values() if v.upper()=="VOTE_YES")
     _, q = compute_f_and_quorum()
-    # Display adjustment ONLY (logic unchanged): include primary's implicit vote
     yes_disp = yes + 1
     total_nodes = len(members)
     threshold_disp = q + 1
-    print(f"→ Prepare votes: {yes_disp}/{total_nodes} (threshold ≥ {threshold_disp})")
+    print(f"→ Prepare votes: {yes_disp+1}/{total_nodes} (threshold ≥ {threshold_disp})")
     return yes, q
 
-def do_commit_phase(txid):
+def do_commit_phase(txid, id_):
     if tx_log.get(txid,{}).get("commit_started"):
-        print("\n[Phase 3/4] COMMIT in progress, waiting for COMMIT_VOTE from replicas ...")
+        print("\n[Phase 3/4] COMMIT in progress, waiting for COMMIT_VOTE ...")
         return
     tx_log[txid]["commit_started"] = True
     print("\n[Phase 3/4] COMMIT")
     print("-"*60)
-    print("→ Leader announces COMMIT (replicas please run 'ack commit' or 'ack abort' to broadcast COMMIT_VOTE)")
+    if id_ == byzantine_id:
+        print("→ Entered COMMIT phase (replicas please run 'ack to <PID> commit' or 'ack to <PID> abort').")
+    else:
+        print("→ Entered COMMIT phase (replicas please run 'ack commit' or 'ack abort').")
 
 def evaluate_commit(txid):
     acks = commit_votes.get(txid, {})
     yes = sum(1 for v in acks.values() if v.upper()=="ACK_COMMIT")
     _, q = compute_f_and_quorum()
-    # Display adjustment ONLY (logic unchanged): include primary's implicit vote
     yes_disp = yes + 1
     total_nodes = len(members)
     threshold_disp = q + 1
-    print(f"→ Commit acks: {yes_disp}/{total_nodes} (threshold ≥ {threshold_disp})")
+    print(f"→ Commit acks: {yes_disp+1}/{total_nodes} (threshold ≥ {threshold_disp})")
     return yes, q
 
 def finalize(txid, commit=True):
@@ -216,7 +217,7 @@ def balances_from_committed():
 def status_print():
     print("="*60)
     print(f"Node: {id_}    View: {view}")
-    print(f"Current leader: {current_primary}")
+    print(f"Current leader: {current_primary}    Byzantine: {byzantine_id}")
     roles = []
     for nid in ids_sorted():
         role = "Leader" if nid == current_primary else "Replica"
@@ -277,14 +278,12 @@ def load_latest_final_checkpoint():
     return ""
 
 def handle_checkpoint_sync_update_from_payload(msg):
-    global members, current_primary, primary_host, primary_port, view, tx_log, state_data
+    global members, current_primary, primary_host, primary_port, view, tx_log, state_data, byzantine_id
     text = msg.get("text", "")
-    # Persist unified text
     ensure_dir("checkpoints")
     path = os.path.join("checkpoints", f"{id_}_recovered_from_checkpoint.log")
     with open(path, "w", encoding="utf-8") as f:
         f.write(text or "")
-    # Load in-memory state if provided
     view = msg.get("view", view)
     current_primary = msg.get("current_primary", current_primary)
     mh = msg.get("members")
@@ -299,15 +298,16 @@ def handle_checkpoint_sync_update_from_payload(msg):
     if isinstance(incoming_state_data, dict):
         state_data.clear(); state_data.update(incoming_state_data)
     else:
-        # Derive state_data from tx_log if not provided
         state_data.clear()
         for tid, info in tx_log.items():
             if info.get("status") == "COMMITTED":
                 state_data[tid] = info.get("data")
-    print(f"\n✓ Checkpoint/state synced from leader. View={view}, leader={current_primary}")
+    if "byzantine_id" in msg:
+        byzantine_id = msg.get("byzantine_id")
+    print(f"\n✓ Checkpoint/state synced from leader. View={view}, leader={current_primary}, Byzantine={byzantine_id}")
 
 def on_msg(msg, addr):
-    global crashed, members, current_primary, primary_host, primary_port, view, current_tx, pending_prepare_tx
+    global crashed, members, current_primary, primary_host, primary_port, view, current_tx, pending_prepare_tx, byzantine_id
     if crashed: return
     t = msg.get("type")
 
@@ -315,7 +315,10 @@ def on_msg(msg, addr):
         new_members = msg.get("members", {})
         members.clear()
         members.update(new_members)
-        print(f"\n✓ Membership updated: {list(members.keys())}")
+        if "view" in msg: view = msg["view"]
+        if "leader" in msg: current_primary = msg["leader"]
+        if "byzantine_id" in msg: byzantine_id = msg["byzantine_id"]
+        print(f"\n✓ Membership updated: {list(members.keys())} (Byzantine={byzantine_id})")
         print(f"\n{id_}> ", end="", flush=True)
 
     elif t == "CLIENT_JOIN":
@@ -327,13 +330,15 @@ def on_msg(msg, addr):
 
     elif t == "PRE_PREPARE":
         txid = msg["txid"]; data = msg["data"]
-        if current_primary != id_:
-            print(f"\n→ Received PRE-PREPARE (tx {txid}) from {msg.get('from')}")
+        print(f"\n→ Received PRE-PREPARE (tx {txid}) from {msg.get('from')}")
+        if byzantine_id == id_:
+            print("  ✓ Waiting for manual vote: run 'prepare to <PID> yes' or 'prepare to <PID> no'")
+        else:
             print("  ✓ Waiting for manual vote: run 'prepare yes' or 'prepare no'")
-            primary_host = msg.get("primary_host", primary_host); primary_port = msg.get("primary_port", primary_port)
-            pending_prepare_tx = txid
-            tx_log.setdefault(txid, {"status":"STARTED","data":data,"commit_started":False})
-            print(f"\n{id_}> ", end="", flush=True)
+        primary_host = msg.get("primary_host", primary_host); primary_port = msg.get("primary_port", primary_port)
+        pending_prepare_tx = txid
+        tx_log.setdefault(txid, {"status":"STARTED","data":data,"commit_started":False})
+        print(f"\n{id_}> ", end="", flush=True)
 
     elif t == "PREPARE":
         txid = msg["txid"]; pid = msg["from"]; vote = msg["vote"]
@@ -342,10 +347,13 @@ def on_msg(msg, addr):
             print(f"\n→ PREPARE from {pid}: {vote}")
             print(f"\n{id_}> ", end="", flush=True)
 
+
     elif t == "COMMIT_VOTE":
-        txid = msg["txid"]; pid = msg["from"]; ack = msg["ack"]
+        txid = msg["txid"];
+        pid = msg["from"];
+        ack = msg["ack"]
         if pid != id_:
-            commit_votes.setdefault(txid, {})[pid]=ack
+            commit_votes.setdefault(txid, {})[pid] = ack
             print(f"\n→ COMMIT_VOTE from {pid}: {ack} (tx {txid})")
             print(f"\n{id_}> ", end="", flush=True)
 
@@ -381,21 +389,19 @@ def on_msg(msg, addr):
             if len(vc_votes[view]) >= need:
                 newv = view + 1
                 vc_done_for_view.add(view)
-                # broadcast NEW_VIEW exactly once
                 for pid,(h,p) in members.items():
                     if pid == id_:
                         continue
                     json_send(h,p,{"type":"NEW_VIEW","new_view":newv,"from":id_,
                                    "primary_host":HOST,"primary_port":port,
-                                   "members": members})
-                # also inform P0
+                                   "members": members,
+                                   "byzantine_id": byzantine_id})
                 json_send(DEFAULT_PRIMARY_HOST, DEFAULT_PRIMARY_PORT, {"type":"NEW_VIEW","new_view":newv,"from":id_,
                                                                        "primary_host":HOST,"primary_port":port,
-                                                                       "members": members})
+                                                                       "members": members,
+                                                                       "byzantine_id": byzantine_id})
                 view = newv; current_primary = id_
-                primary_host, primary_port = HOST, port
                 print(f"✓ Reached {need} votes; I ({id_}) broadcast NEW_VIEW, view={view}")
-                # Re-exec aborted/unfinished after view change
                 announce_primary_capabilities()
         print(f"\n{id_}> ", end="", flush=True)
 
@@ -407,8 +413,10 @@ def on_msg(msg, addr):
         new_members = msg.get("members")
         if new_members:
             members.clear(); members.update(new_members)
+        if "byzantine_id" in msg: 
+            byzantine_id = msg["byzantine_id"]
         view = nv; current_primary = leader
-        print(f"\n✓ NEW_VIEW received: view={view}, new leader={current_primary}")
+        print(f"\n✓ NEW_VIEW received: view={view}, new leader={current_primary} (Byzantine={byzantine_id})")
         announce_primary_capabilities()
         print(f"\n{id_}> ", end="", flush=True)
 
@@ -429,7 +437,6 @@ def on_msg(msg, addr):
         print(f"\n{id_}> ", end="", flush=True)
 
     elif t == "CHECKPOINT_REPORT":
-        # Only relevant when I am the collector (leader coordinating the checkpoint)
         cid = msg.get("checkpoint_id")
         node_id = msg.get("node_id", "UNKNOWN")
         text = msg.get("text", "")
@@ -441,7 +448,6 @@ def on_msg(msg, addr):
             ensure_dir("checkpoints")
             final_path = os.path.join("checkpoints", f"final_checkpoint_{cid}.log")
             with open(final_path, "w", encoding="utf-8") as f:
-                # write in member order for readability
                 for nid in ids_sorted():
                     txt = checkpoint_reports[cid].get(nid)
                     if txt:
@@ -454,7 +460,6 @@ def on_msg(msg, addr):
         print(f"\n{id_}> ", end="", flush=True)
 
     elif t == "RECOVER_HELLO":
-        # If I'm the leader, respond with latest checkpoint/state
         if current_primary == id_:
             text = load_latest_final_checkpoint()
             dest_h, dest_p = msg.get("host"), msg.get("port")
@@ -464,6 +469,7 @@ def on_msg(msg, addr):
                 "view": view,
                 "current_primary": current_primary,
                 "members": members,
+                "byzantine_id": byzantine_id,
                 "primary_host": HOST,
                 "primary_port": port,
                 "tx_log": tx_log,
@@ -496,18 +502,82 @@ def repl():
             else:
                 print("(empty)")
 
+        elif cmd == "tx":
+            if current_primary != id_:
+                print("× I am not the leader; cannot start a transaction"); 
+            else:
+                data = input("Enter tx data (key=value, e.g., account=alice,amount=100,operation=deposit):\ndata> ").strip()
+                start_tx(data)
+
+        elif cmd == "progress":
+            # Any node may advance phases locally based on its own view of votes
+            if not current_tx:
+                pending = [tid for tid,info in tx_log.items() if info.get("status")!="COMMITTED"]
+                current_tx = pending[-1] if pending else None
+                if not current_tx:
+                    print("× No ongoing tx"); continue
+            py, pq = evaluate_prepare(current_tx)
+            py = py +1
+            if not tx_log[current_tx].get("commit_started"):
+                if py < pq:
+                    print("Prepare not satisfied; aborting the tx.")
+                    finalize(current_tx, commit=False)
+                    current_tx = None
+                    continue
+                else:
+                    print("\nPrepare threshold satisfied; entering COMMIT")
+                    do_commit_phase(current_tx, id_)
+                    continue
+            cy, cq = evaluate_commit(current_tx)
+            cy = cy +1
+            if cy >= cq:
+                finalize(current_tx, commit=True)
+            else:
+                print("Commit threshold not satisfied; aborting the tx.")
+                finalize(current_tx, commit=False)
+            current_tx = None
+
+        elif cmd.startswith("prepare to "):
+            parts = cmd.split()
+            if len(parts) != 4 or parts[2] not in members:
+                print("Usage: prepare to <PID> yes|no")
+                continue
+            if byzantine_id != id_:
+                print("× Only the Byzantine node can send targeted votes"); continue
+            if not pending_prepare_tx:
+                print("× No pending tx to vote on"); continue
+            pid = parts[2]; choice = parts[3].lower()
+            vote = "VOTE_YES" if choice in ("yes","y") else "VOTE_NO"
+            h,p = members[pid]
+            json_send(h,p,{"type":"PREPARE","from":id_,"txid":pending_prepare_tx,"vote":vote})
+            print(f"✓ Targeted PREPARE sent to {pid}: {vote}")
+
+        elif cmd.startswith("ack to "):
+            parts = cmd.split()
+            if len(parts) != 4 or parts[2] not in members:
+                print("Usage: ack to <PID> commit|abort")
+                continue
+            if byzantine_id != id_:
+                print("× Only the Byzantine node can send targeted acks"); continue
+            txid = None
+            if tx_log: txid = list(tx_log.keys())[-1]
+            if not txid: print("× No tx to ack"); continue
+            pid = parts[2]; choice = parts[3].lower()
+            ack = "ACK_COMMIT" if choice == "commit" else "ACK_ABORT"
+            h,p = members[pid]
+            json_send(h,p,{"type":"COMMIT_VOTE","from":id_,"txid":txid,"ack":ack})
+            print(f"✓ Targeted COMMIT_VOTE sent to {pid}: {ack}")
+
         elif cmd.startswith("prepare "):
             if not pending_prepare_tx:
                 print("× No pending tx to vote on (PRE_PREPARE not received yet)")
             else:
                 choice = cmd.split()[-1].lower()
                 vote = "VOTE_YES" if choice in ("yes","y") else "VOTE_NO"
-                # Broadcast PREPARE to all members (including primary)
                 for pid,(h,p) in members.items():
                     if pid == id_:
                         continue
                     json_send(h,p,{"type":"PREPARE","from":id_,"txid":pending_prepare_tx,"vote":vote})
-                json_send(DEFAULT_PRIMARY_HOST, DEFAULT_PRIMARY_PORT, {"type":"PREPARE","from":id_,"txid":pending_prepare_tx,"vote":vote})
                 print(f"✓ PREPARE broadcast: {vote} (tx={pending_prepare_tx})")
                 pending_prepare_tx = None
 
@@ -519,12 +589,10 @@ def repl():
             if not txid:
                 print("× No tx to ack")
             else:
-                # Broadcast COMMIT_VOTE to all members (including primary)
                 for pid,(h,p) in members.items():
                     if pid == id_:
                         continue
                     json_send(h,p,{"type":"COMMIT_VOTE","from":id_,"txid":txid,"ack":ack})
-                json_send(DEFAULT_PRIMARY_HOST, DEFAULT_PRIMARY_PORT, {"type":"COMMIT_VOTE","from":id_,"txid":txid,"ack":ack})
                 if ack == "ACK_ABORT":
                     state_data.pop(txid, None)
                 print("✓ Broadcast", ack)
@@ -534,7 +602,6 @@ def repl():
 
         elif cmd == "recover":
             crashed = False; print("✓ Node recovered; requesting latest checkpoint from the current leader")
-            # ask current leader (not always P0) for latest checkpoint/state
             json_send(primary_host, primary_port, {"type":"RECOVER_HELLO","host":HOST,"port":port})
 
         elif cmd == "view change":
@@ -543,11 +610,9 @@ def repl():
                 if pid == id_:
                     continue
                 json_send(h,p,{"type":"VIEW_CHANGE","from":id_})
-            # also tell P0
             json_send(DEFAULT_PRIMARY_HOST, DEFAULT_PRIMARY_PORT, {"type":"VIEW_CHANGE","from":id_})
 
         elif cmd == "checkpoint":
-            # If I am the leader, coordinate a distributed checkpoint; otherwise just local print
             if current_primary == id_:
                 cid = time.strftime("%Y%m%d_%H%M%S")
                 expected = len(members)
@@ -564,44 +629,9 @@ def repl():
                                    "collector_host": HOST, "collector_port": port})
                 print(f"→ Started distributed checkpoint (expecting {expected} reports)")
             else:
-                # still allow local snapshot for convenience
                 text = snapshot_text()
                 print("\n" + text)
                 write_local_checkpoint_file(text)
-
-        elif cmd == "tx":
-            data = input("Enter tx data (key=value, e.g., account=alice,amount=100,operation=deposit):\ndata> ").strip()
-            start_tx(data)
-
-        elif cmd == "progress":
-            if current_primary != id_:
-                print("× I am not the leader; cannot run progress")
-                continue
-            if not current_tx:
-                pending = [tid for tid,info in tx_log.items() if info.get("status")!="COMMITTED"]
-                current_tx = pending[-1] if pending else None
-                if not current_tx:
-                    print("× No ongoing tx"); continue
-            # A: Prepare decision
-            py, pq = evaluate_prepare(current_tx)
-            if not tx_log[current_tx].get("commit_started"):
-                if py < pq:
-                    print("Prepare not satisfied; aborting the tx.")
-                    finalize(current_tx, commit=False)
-                    current_tx = None
-                    continue
-                else:
-                    print("\nPrepare threshold satisfied; entering COMMIT")
-                    do_commit_phase(current_tx)
-                    continue
-            # B: Commit decision
-            cy, cq = evaluate_commit(current_tx)
-            if cy >= cq:
-                finalize(current_tx, commit=True)
-            else:
-                print("Commit threshold not satisfied; aborting the tx.")
-                finalize(current_tx, commit=False)
-            current_tx = None
 
         elif cmd == "quit":
             print("Bye!"); time.sleep(0.2); break
