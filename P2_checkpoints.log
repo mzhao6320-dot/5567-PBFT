@@ -1,0 +1,8 @@
+# Node P2 snapshot @ 2025-11-10 15:10:04 (view=0, leader=P0)
+Transactions:
+  - ee6778b0: COMMITTED {"account": "alice", "amount": "100", "operation": "deposit"}
+  - c2b65c14: COMMITTED {"account": "alice", "amount": "100", "operation": "deposit"}
+  - b199d4a9: ABORTED {"account": "alice", "amount": "100", "operation": "withdraw"}
+Balances:
+  - alice: 200
+
