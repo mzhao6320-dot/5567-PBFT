@@ -29,7 +29,6 @@ status     # show node status
 quit       # exit the program
 ```
 
-
 ### 🧩 Case 1: Normal Operation (Deposit)
 **Command:**
 ```bash
