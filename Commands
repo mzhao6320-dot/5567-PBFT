@@ -71,7 +71,8 @@ P0(primary): status
 
 ### 💣 Case 3: Withdrawal Failure (Withdraw 100)
 **Command:**
-client: send account=alice,amount=100,operation=withdraw PO(primary): tx
+client: send account=alice,amount=100,operation=withdraw
+PO(primary): tx
 P0 (primary): account=alice,amount=100,operation=withdraw
 Pl(replica): prepare no
 P2 (replica): prepare no
@@ -79,7 +80,6 @@ P3 (replica, Byzantine): prepare to P0 yes
 P3 (replica, Byzantine): prepare to P1 yes
 P3 (replica, Byzantine): prepare to P2 no
 P0 (primary), P1 (replica), P2 (replica), P3 (replica, Byzantine): progress
-P1 (replica), P2 (replica): ack commit
 P0 (primary): status
 
 ---
@@ -107,7 +107,7 @@ P0 (primary): status
 ### ⚠️ Case 5: Crash and Recovery
 
 P3 (replica, Byzantine): crash
-client: account=alice,amount=|00,operation=deposit
+client: account=alice,amount=100,operation=deposit
 P0 (primary): tx
 P0(primary): account=alice,amount=100,operation=deposit
 P1 (replica): prepare yes
