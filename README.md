@@ -1,10 +1,5 @@
 # COMP5567 - Lab 4: Practical Byzantine Fault Tolerance (PBFT)
 
-**Lecturer:** Prof. Xiao Bin  
-**TA:** Zhao Mingyang (myang.zhao@connect.polyu.hk)  
-**Course:** COMP5567 - Distributed Systems  
-**Lab 4 Theme:** Implementation and Testing of PBFT Consensus Mechanism  
-
 ---
 
 ## 📦 1. Environment Setup
