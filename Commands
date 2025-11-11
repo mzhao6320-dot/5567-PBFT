@@ -31,7 +31,7 @@ quit       # exit the program
 
 ### 🧩 Case 1: Normal Operation (Deposit)
 **Command:**
-client: send account=alice,amount=l00,operation=deposit
+client: send account=alice,amount=100,operation=deposit
 P0 (primary): tx
 P0 (primary): account=alice,amount=100,operation=deposit
 P1 (replica): prepare yes
@@ -71,7 +71,7 @@ P0(primary): status
 
 ### 💣 Case 3: Withdrawal Failure (Withdraw 100)
 **Command:**
-client: send account=alice,amount=l00,operation=withdraw PO(primary): tx
+client: send account=alice,amount=100,operation=withdraw PO(primary): tx
 P0 (primary): account=alice,amount=100,operation=withdraw
 Pl(replica): prepare no
 P2 (replica): prepare no
@@ -86,7 +86,7 @@ P0 (primary): status
 
 ### 🔄 Case 4: Commit Phase Conflict
 
-client: send account=alice,amount=l00,operation=withdraw
+client: send account=alice,amount=100,operation=withdraw
 P0 (primary): tx
 P0 (primary): account=alice,amount=100,operation=withdraw
 PI(replica): prepare yes
@@ -109,7 +109,7 @@ P0 (primary): status
 P3 (replica, Byzantine): crash
 client: account=alice,amount=|00,operation=deposit
 P0 (primary): tx
-P0(primary): account=alice,amount=l00,operation=deposit
+P0(primary): account=alice,amount=100,operation=deposit
 P1 (replica): prepare yes
 P2 (replica): prepare yes
 P0 (primary), P1 (replica), P2 (replica): progress
