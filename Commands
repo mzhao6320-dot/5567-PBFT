@@ -1,3 +1,35 @@
+### 2.1 Terminal Setup
+Open a terminal window in the project root path:
+```bash
+cd 5567-PBFT-main
+```
+
+### 2.2 Start the Primary Node
+```bash
+python primary_node.py
+```
+
+### 2.3 Start Replica Nodes
+```bash
+python pbft_node.py P1 5001
+python pbft_node.py P2 5002
+python pbft_node.py P3 5003   # Byzantine node
+```
+
+### 2.4 Start the Client
+```bash
+python pbft_client.py 7000
+```
+
+### 2.5 Common Commands
+In the **Primary Node** terminal:
+```bash
+list       # show all nodes
+status     # show node status
+quit       # exit the program
+```
+
+
 ### 🧩 Case 1: Normal Operation (Deposit)
 **Command:**
 ```bash
