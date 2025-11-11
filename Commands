@@ -60,7 +60,7 @@ P3 (replica, Byzantine): prepare to P0 yes
 P3 (replica, Byzantine): prepare to P1 no
 P3 (replica, Byzantine): prepare to P2 no
 P0 (primary), P1 (replica), P2 (replica), P3 (replica, Byzantine): progress
-P0 (primary), P1 (replica), P2 (replica): ack commit
+P1 (replica), P2 (replica): ack commit
 P3 (replica, Byzantine): ack to P0 commit
 P3 (replica, Byzantine): ack to P1 abort
 P3 (replica, Byzantine): ack to P2 abort
@@ -76,8 +76,10 @@ P0 (primary): account=alice,amount=100,operation=withdraw
 Pl(replica): prepare no
 P2 (replica): prepare no
 P3 (replica, Byzantine): prepare to P0 yes
-P3 (replica, Byzantine): prepare to P1 yes。P3 (replica, Byzantine): prepare to P2 no
-P0 (primary), P1 (replica), P2 (replica), P3 (replica, Byzantine): progressP0 (primary),Pl(replica), P2 (replica):ack commit
+P3 (replica, Byzantine): prepare to P1 yes
+P3 (replica, Byzantine): prepare to P2 no
+P0 (primary), P1 (replica), P2 (replica), P3 (replica, Byzantine): progress
+P1 (replica), P2 (replica): ack commit
 P0 (primary): status
 
 ---
@@ -93,10 +95,11 @@ P3 (replica, Byzantine): prepare to P0 yes
 P3 (replica, Byzantine): prepare to P1 yes
 P3 (replica, Byzantine): prepare to P2 yes
 P0 (primary),P1 (replica), P2 (replica), P3 (replica, Byzantine): progress
-P0 (primary): ack commit
 P1 (replica): ack abort
 P2 (replica): ack abort
-P3 (replica, Byzantine): ack to P0 commitP3 (replica, Byzantine): ack to P1 commitP3 (replica, Byzantine): ack to P2 commit
+P3 (replica, Byzantine): ack to P0 commit
+P3 (replica, Byzantine): ack to P1 commit
+P3 (replica, Byzantine): ack to P2 commit
 P0 (primary), P1 (replica), P2 (replica), P3 (replica, Byzantine): progress
 P0 (primary): status
 ---
@@ -110,7 +113,6 @@ P0(primary): account=alice,amount=l00,operation=deposit
 P1 (replica): prepare yes
 P2 (replica): prepare yes
 P0 (primary), P1 (replica), P2 (replica): progress
-P0 (primary): ack commit
 P2 (replica): ack commit
 P3 (replica): ack commit
 P0 (primary), P1 (replica), P2 (replica): progress
@@ -141,5 +143,5 @@ P0 (primary): status
 ### 📍 Case 7: Checkpointing
 
 P0(primary):checkpoint
-View all nodes'logs in checkpointslfinal checkpoint 20251110 231455.log
+View all nodes' logs in checkpoints\final_checkpoint_20251110_231455.log
 ---
