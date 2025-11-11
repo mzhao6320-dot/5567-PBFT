@@ -31,9 +31,6 @@ quit       # exit the program
 
 ### 🧩 Case 1: Normal Operation (Deposit)
 **Command:**
-```bash
-send account=alice,amount=100,operation=deposit
-```
 client: send account=alice,amount=l00,operation=deposit
 P0 (primary): tx
 P0 (primary): account=alice,amount=100,operation=deposit
@@ -43,7 +40,7 @@ P3 (replica, Byzantine): prepare to P0 yes
 P3 (replica, Byzantine): prepare to P1 yes
 P3 (replica, Byzantine): prepare to P2 yes
 P0 (primary), P1 (replica), P2 (replica), P3 (replica, Byzantine): progress
-P0 (primary), P1 (replica), P2 (replica): ack commit
+P1 (replica), P2 (replica): ack commit
 P3 (replica, Byzantine): ack to P0 commit
 P3 (replica, Byzantine): ack to P1 commit
 P3 (replica, Byzantine): ack to P2 commit
@@ -54,9 +51,6 @@ P0 (primary): status
 
 ### 💸 Case 2: Normal Operation (Withdraw 20)
 **Command:**
-```bash
-send account=alice,amount=20,operation=withdraw
-```
 client: send account=alice,amount=20,operation=withdraw
 P0 (primary): tx
 P0 (primary): account=alice,amount=20,operation=withdraw
@@ -77,9 +71,6 @@ P0(primary): status
 
 ### 💣 Case 3: Withdrawal Failure (Withdraw 100)
 **Command:**
-```bash
-send account=alice,amount=100,operation=withdraw
-```
 client: send account=alice,amount=l00,operation=withdraw PO(primary): tx
 P0 (primary): account=alice,amount=100,operation=withdraw
 Pl(replica): prepare no
@@ -92,8 +83,7 @@ P0 (primary): status
 ---
 
 ### 🔄 Case 4: Commit Phase Conflict
-- All nodes prepare *yes*, but some replicas abort in commit phase.  
-- Simulates inconsistent commit/abort behavior due to Byzantine interference.
+
 client: send account=alice,amount=l00,operation=withdraw
 P0 (primary): tx
 P0 (primary): account=alice,amount=100,operation=withdraw
@@ -112,9 +102,7 @@ P0 (primary): status
 ---
 
 ### ⚠️ Case 5: Crash and Recovery
-**Scenario:**
-- P3 (Byzantine) crashes, then recovers.  
-- System continues consensus with remaining nodes.
+
 P3 (replica, Byzantine): crash
 client: account=alice,amount=|00,operation=deposit
 P0 (primary): tx
@@ -131,10 +119,7 @@ P3(replica, Byzantine): recover
 ---
 
 ### 🔁 Case 6: View Change
-**Scenario:**
-- Primary node (P0) crashes.  
-- Next replica (P1) automatically becomes the new primary.  
-- System continues operation under new view.
+
 P0 (primary): crash
 P1 (replica), P2 (replica), P3 (replica, Byzantine): view change
 P0 (replica): recover
@@ -154,12 +139,7 @@ P0 (primary): status
 ---
 
 ### 📍 Case 7: Checkpointing
-**Scenario:**
-- Periodically records the transaction state (e.g., after 1000 rounds).  
-- Checkpoint logs stored in:
-  ```
-  checkpoints/final_checkpoint_<timestamp>.log
-  ```
+
 P0(primary):checkpoint
 View all nodes'logs in checkpointslfinal checkpoint 20251110 231455.log
 ---
